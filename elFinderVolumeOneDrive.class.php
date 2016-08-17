@@ -89,9 +89,9 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
             'OneDriveApiClient'   => '',
             'path'              => '/',
             'separator'         => '/',
-            'tmbPath'           => '../files/.tmb',
-			'tmbURL'            => dirname($_SERVER['PHP_SELF']) . '/../files/.tmb',
-			'tmpPath'           => '../files/.tmp',	
+            'tmbPath'           => '',
+            'tmbURL'            => '',
+            'tmpPath'           => '',	
             'acceptedName'      => '#^[^/\\?*:|"<>]*[^./\\?*:|"<>]$#',
             'rootCssClass'      => 'elfinder-navbar-root-onedrive'
         );
@@ -235,8 +235,8 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
 									
 				}
 				else{						
-								
-					$result = $this->query('me/skydrive', $root = false, $recursive = false);
+					$this->onedrive = $this->session->get('elFinderOneDriveAuthTokens');			
+					$result = $this->query('me/skydrive', $fetch_self = false, $recursive = true);
 					$folders = [];					
 					
 					foreach ($result as $res) {				
@@ -357,12 +357,13 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
         $this->options['root'] == '' ?  $this->options['root']= 'OneDrive.com' : $this->options['root'];
         
         if (empty($this->options['alias'])) {
-		    $this->options['alias'] = ($this->options['path'] === '/') || ($this->options['path'] === 'root')? $this->options['root'] : $this->getPathtoName($this->options['path']).'@OneDrive';
-        }
+			$this->options['alias'] = ($this->options['path'] === '/') ? $this->options['root'] :
+									  $this->query(basename($this->options['path']), $fetch_self = true)->name.'@OneDrive';
+		}
 
         $this->rootName = $this->options['alias'];
                
-        $this->tmbPrefix = 'onedrive'.base_convert($this->root, 10, 32);
+        $this->tmbPrefix = 'onedrive'.base_convert($this->netMountKey, 10, 32);
         
         if (!empty($this->options['tmpPath'])) {
             if ((is_dir($this->options['tmpPath']) || mkdir($this->options['tmpPath'])) && is_writable($this->options['tmpPath']))
@@ -444,7 +445,7 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_AUTOREFERER    => true,
-            CURLOPT_POST           => 1,
+            CURLOPT_POST           => true,
             CURLOPT_POSTFIELDS     => $fields,
 
             CURLOPT_HTTPHEADER => array(
@@ -452,8 +453,8 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
             ),
 
             // SSL options.
-            CURLOPT_SSL_VERIFYHOST => false,
-            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => true,
+            CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_URL            => $url,
         ));
 
@@ -517,15 +518,15 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
 					CURLOPT_RETURNTRANSFER => true,
 					CURLOPT_FOLLOWLOCATION => true,
 					CURLOPT_AUTOREFERER    => true,
-					CURLOPT_POST           => 1, // i am sending post data
+					CURLOPT_POST           => true, // i am sending post data
 					CURLOPT_POSTFIELDS     => 'client_id=' . urlencode($this->options['client_id'])
 						. '&client_secret=' . urlencode($this->options['client_secret'])
 						. '&grant_type=refresh_token'
 						. '&refresh_token=' . urlencode($onedrive->token->data->refresh_token),
 								
 					// SSL options.
-					CURLOPT_SSL_VERIFYHOST => false,
-					CURLOPT_SSL_VERIFYPEER => false,
+					CURLOPT_SSL_VERIFYHOST => true,
+					CURLOPT_SSL_VERIFYPEER => true,
 					CURLOPT_URL            => $url,
 				));
 		
@@ -560,24 +561,6 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
         return true;
     }
     
-    /**
-     * Get dat(onedrive metadata) from OneDrive
-     * 
-     * @param string $path
-     * @return array onedrive metadata
-     */
-    private function getPathtoName($path)
-    {
-		try { 
-        	$itemId = basename($path);                 
-			$res  = $this->query($itemId, $fetch_self = true);
-		
-        	return $res->name;
-		} catch (Exception $e) {
-            return $e->getMessage();
-        }
-    }
-    
 	/**
      * Creates a base cURL object which is compatible with the OneDrive API.   
      *
@@ -592,7 +575,7 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_AUTOREFERER    => true,
-            CURLOPT_SSL_VERIFYHOST => false,
+            CURLOPT_SSL_VERIFYHOST => true,
             CURLOPT_SSL_VERIFYPEER => true,
         );
 
@@ -613,7 +596,7 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
 		curl_setopt($curl, CURLOPT_FAILONERROR, true); 
 		curl_setopt($curl, CURLOPT_FOLLOWLOCATION, true); 
 		curl_setopt($curl, CURLOPT_RETURNTRANSFER, true); 
-		curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, false); 
+		curl_setopt($curl, CURLOPT_SSL_VERIFYHOST, true); 
 		curl_setopt($curl, CURLOPT_SSL_VERIFYPEER, true);
 		   
 		if($contents){
@@ -655,7 +638,7 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
 			foreach ($this->_createCurl($url) as $file) {
 				if($file->type == 'folder'){				
 					$result[] = $file;
-					$result = array_merge($result, $this->query($file->id, $root = false, $recursive = true));			        		
+					$result = array_merge($result, $this->query($file->id, $fetch_self = false, $recursive = true));			        		
 				}else{
 					$result[] = $file;
 				}			 											
@@ -717,13 +700,19 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
     protected function parseRaw($raw)
     {		
         $stat = array();
-	
-		$stat['rev']	= $raw->id;
+        
+        $stat['rev']	= isset($raw->id) ? $raw->id : 'root';
+        $stat['pid']	= isset($raw->parent_id) ? $raw->parent_id : 'me/skydrive';	
         $stat['name']	= $raw->name;
         $stat['mime']	= $raw->type =='folder' ? 'directory' : parent::$mimetypes[pathinfo($raw->name, PATHINFO_EXTENSION)];		
         $stat['size']	= $raw->type =='folder' ? 0 : (int)$raw->size;
         $stat['ts']		= $raw->updated_time !== null ? strtotime($raw->updated_time) : $_SERVER['REQUEST_TIME'];
-        $stat['dirs']	= $raw->type =='folder' ? 1 : 0;
+        $stat['dirs']	= 0;
+        
+        if($raw->type == 'folder') {
+			$stat['dirs'] = (int)$this->_subdirs($stat['rev']);			
+		}
+		
         $stat['url']	= '1';
 	    
 		if ($raw->type !=='folder') {
@@ -1170,7 +1159,24 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
      **/
     protected function _subdirs($path)
     {
-        return ($stat = $this->stat($path)) && isset($stat['dirs']) ? $stat['dirs'] : false;
+        if($path == '/'){
+			$path = 'me/skydrive';		
+		}else{
+			$path = basename($path);
+		}        
+
+		$url = self::API_URL . $path .'/files?filter=folders'
+							. '&access_token=' . urlencode($this->onedrive->token->data->access_token);
+
+		$res = $this->_createCurl($url);
+		
+		if($res){
+			return true;
+		}else {
+			return false;
+		}
+		
+        //return ($stat = $this->stat($path)) && isset($stat['dirs']) ? $stat['dirs'] : false;
     }
 
     /**
@@ -1570,37 +1576,33 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
             $path .= '/'.$name;
         }
         $path = $this->_normpath($path);
+        
+        empty(basename(dirname($path))) ? $parentId ='me/skydrive' : $parentId = basename(dirname($path));
+		isset($stat['name']) ? $name = $stat['name'] : $name = basename($path);
 
-        try {
-			if(empty($name) && empty($stat) & strpos(basename($path),'file') !== false && strpos(basename($path),'!') !== false){
-				$file = $this->query(basename($path), $fetch_self = true);				
-				$itemId = $file->id;
-				$name = $file->name;
-				$parentId = $file->parent_id;		
-			}elseif(!empty($stat['rev'])){
-				$itemId = $stat['rev'];
-				$name = $stat['name'];
-				$parentId = 'folder.'.explode(".",$stat['rev'])[1];
-			}elseif(empty($name) && empty($stat) && strpos(basename($path),'file') == false && strpos(basename($path),'!') == false){	
-				$name = basename($path);			
-				basename(dirname($path)) == '' ? $parentId = 'me/skydrive' : $parentId = basename(dirname($path));
-			}elseif(!empty($name) && !empty($stat)){
-				$name = $name;			
-				basename(dirname($path)) == '' ? $parentId = 'me/skydrive' : $parentId = basename(dirname($path));
-				$res = $this->query($parentId);
-				foreach($res as $f){		
-					if($f->name == $name){					
-						return $path.'/'.$f->id();
+		$file_exists = '';
+		if(empty($stat['rev']) && empty($stat['pid'])){		
+			$file = $this->query($parentId);		
+			if($file){
+				foreach($file as $f){
+					if($f->name == $name || $f->id == basename($path)){
+						$name = $f->name;
+						$file_exists = 'true';
 						break;
 					}
 				}
 			}
-            //Create or Update a file            				
-			$content = stream_get_contents($fp);                
-			$content =  strlen($content) == 0 ? ' ' : $content; 
+		}
+
+        try {
+		
+            //Create or Update a file
+            if($file_exists == 'true'  && !empty($stat) && empty($stat['rev'])){				
+				return $this->_normpath(dirname($path).'/'.$f->id);				
+			}
 			
-			if (is_resource($content)) {
-				$stream = $content;
+			if (is_resource($fp)) {
+				$stream = $fp;
 			} else {
 				$options = array(
 					'stream_back_end' => 'php://temp',
@@ -1612,7 +1614,7 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
 					throw new \Exception('fopen() failed');
 				}
 	
-				if (false === fwrite($stream, $content)) {
+				if (false === fwrite($stream, $fp)) {
 					fclose($stream);
 					throw new \Exception('fwrite() failed');
 				}
@@ -1648,7 +1650,7 @@ class elFinderVolumeOneDrive extends elFinderVolumeDriver {
 			//create or update File in the Target
 			$file = json_decode(curl_exec($curl));			
 			
-			if (!is_resource($content)) {
+			if (!is_resource($fp)) {
 				fclose($stream);
 			}
 				
